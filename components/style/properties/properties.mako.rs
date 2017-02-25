@@ -731,24 +731,32 @@ impl ToCss for PropertyId {
     }
 }
 
-// FIXME(https://github.com/rust-lang/rust/issues/33156): remove this enum and use PropertyId
-// when stable Rust allows destructors in statics.
-enum StaticId {
-    Longhand(LonghandId),
-    Shorthand(ShorthandId),
-}
-include!(concat!(env!("OUT_DIR"), "/static_ids.rs"));
 impl PropertyId {
     /// Returns a given property from the string `s`.
     ///
     /// Returns Err(()) for unknown non-custom properties
-    pub fn parse(s: Cow<str>) -> Result<Self, ()> {
-        if let Ok(name) = ::custom_properties::parse_name(&s) {
+    pub fn parse(property_name: Cow<str>) -> Result<Self, ()> {
+        if let Ok(name) = ::custom_properties::parse_name(&property_name) {
             return Ok(PropertyId::Custom(::custom_properties::Name::from(name)))
         }
 
-        let lower_case = ::str::cow_into_ascii_lowercase(s);
-        match STATIC_IDS.get(&*lower_case) {
+        // FIXME(https://github.com/rust-lang/rust/issues/33156): remove this enum and use PropertyId
+        // when stable Rust allows destructors in statics.
+        enum StaticId {
+            Longhand(LonghandId),
+            Shorthand(ShorthandId),
+        }
+        ascii_case_insensitive_phf_map! {
+            StaticIds: Map<StaticId> = {
+                % for property in data.longhands:
+                    "${property.name}" => "StaticId::Longhand(LonghandId::${property.camel_case})",
+                % endfor
+                % for property in data.shorthands:
+                    "${property.name}" => "StaticId::Shorthand(ShorthandId::${property.camel_case})",
+                % endfor
+            }
+        }
+        match StaticIds::get(&property_name) {
             Some(&StaticId::Longhand(id)) => Ok(PropertyId::Longhand(id)),
             Some(&StaticId::Shorthand(id)) => Ok(PropertyId::Shorthand(id)),
             None => Err(()),
